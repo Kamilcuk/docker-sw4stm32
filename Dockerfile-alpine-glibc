@@ -1,0 +1,39 @@
+#### TODO:
+
+FROM alpine-glibc
+MAINTAINER Kamil Cukrowski <kamilcukrowski@gmail.com>
+
+RUN set -x && \
+	echo '===> Install prerequisites' && \
+	apk update && \
+	apk add ncurses-libs openjdk8 bash make libc6-compat && \
+	rm -rf /var/cache/apk/* && \
+	echo '===> Installed prerequisites'
+
+RUN set -x && \
+	echo '===> Installing sw4stm32' && \
+	pkgver=v2.2 && \
+	mkdir /etc/udev/rules.d && \
+	wget http://www.ac6-tools.com/downloads/SW4STM32/install_sw4stm32_linux_64bits-$pkgver.run && \
+	yes | java -DINSTALL_PATH=/opt/sw4stm32 -d64 \
+		-jar install_sw4stm32_linux_64bits-$pkgver.run -options-system && \
+	echo '===> Create sw4stm32-headless shortcut' && \
+	echo -ne '#!/bin/sh -x\nexec /opt/sw4stm32/eclipse "$@"\n' \
+		> /usr/local/bin/sw4stm32 && \
+	chmod +x /usr/local/bin/sw4stm32 && \
+        echo -ne '#!/bin/sh -x\nexec java -jar /opt/sw4stm32/plugins/org.eclipse.equinox.launcher_1.3.201.v20161025-1711.jar -noSplash "$@"\n' \
+                > /usr/local/bin/sw4stm32-headless && \
+        chmod +x /usr/local/bin/sw4stm32-headless
+
+RUN set -x && \
+	echo '===> Unpacking fr.ec6 plugin cause sw4stm32 is too stupid to do this on its own' && \
+	cd /opt/sw4stm32/plugins/fr.ac6.mcu.externaltools.arm-none.linux64_*/tools && \
+	mkdir -p compiler && cd compiler && \
+	if [ "$(ls -A .)" ]; then \
+		tar xjvf ../st-gnu-arm-gcc-*.tar.bz2 && \
+		mv st-gnu-arm-gcc-*/* . && \
+		rmdir st-gnu-arm-gcc-* \
+	fi && \
+	echo '===> Finished unpacking arm-none-eabi-* for sw4stm32'
+
+	

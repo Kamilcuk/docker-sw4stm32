@@ -1,0 +1,78 @@
+# TOOD work in progress
+
+FROM finalduty/archlinux
+MAINTAINER Kamil Cukrowski <kamilcukrowski@gmail.com>
+
+## install yaourt and dependencies ######################################
+RUN set -xue && \
+	echo '===> Adding package repositories' && \
+	echo -ne \
+'[multilib]\nInclude = /etc/pacman.d/mirrorlist\n\n'\
+'[aur-archlinux]\nSigLevel=Never\nServer = https://repo.itmettke.de/aur/$repo/$arch\n\n'\
+'[archlinuxfr]\nSigLevel = Never\nServer = http://repo.archlinux.fr/$arch\n\n'\
+		>> /etc/pacman.conf && \
+	echo '===> Refreshing archlinux keyring' && \
+	pacman -Sy  --noconfirm archlinux-keyring && \
+	echo '===> Installing: base-devel sudo yaourt imagemagick for building purpouses' && \
+	echo '===> Installing: webkit2gtk gtk2 unzip and java8 environment to be able to run eclipse' && \
+	pacman -Suy --noconfirm base-devel sudo yaourt imagemagick jre8-openjdk jre8-openjdk-headless jdk8-openjdk && \
+	echo '===> Installing: gcc-multilib and lib32-ncurses for lib32-ncurses5-compat-libs' && \
+	yes | pacman -Suy gcc-multilib gcc-libs-multilib lib32-ncurses lib32-glibc && \
+	echo '===> Installing: webkit2gtk gtk2 unzip and java8 environment to be able to run eclipse' && \
+	pacman -Suy --nonfirm webkit2gtk gtk2 unzip && \
+	echo '===> Pacman CleanUp' && \
+	yes | pacman -Sc && \
+	yes | pacman -Scc && \
+	echo '===> Setting java environment' && \
+	archlinux-java set java-8-openjdk && \
+	echo '===> FIX stupid bug when sudo inside docker' && \
+	sed -e "/nice/s/\*/#*/" -i /etc/security/limits.conf && \
+	echo '===> enable sudo from nobody with nopasword, for "sudo -u nobody makepkg -i" to work' && \
+	echo "nobody ALL=(ALL:ALL) NOPASSWD: ALL" | (VISUAL="tee -a" EDITOR="tee -a" visudo)
+
+
+## install sw4stm32 ###################################################
+RUN set -xueo pipefail && \
+	echo '===> Installing lib32-ncurses5-compat-libs' && \
+	sudo -Eu nobody env MAKEPKG="makepkg --skippgpcheck" yaourt --noconfirm -S lib32-ncurses5-compat-libs && \
+	echo '===> Installing sw4stm32' && \
+	if ! sudo -Eu nobody yaourt --noconfirm -S sw4stm32; then \
+		echo '===> udev stlink rule workaround' && \
+		rm -f /etc/udev/rules.d/49-stlinkv2.rules && \
+		pacman -U --noconfirm /tmp/yaourt-tmp-nobody/sw4stm32-.pkg.tar.xz \
+	fi && \
+	echo '===> sw4stm32 installed' && \
+	echo '===> Create sw4stm32-headless shortcut' && \
+        echo -ne '#!/bin/sh -x\nexec java -jar /opt/sw4stm32/plugins/org.eclipse.equinox.launcher_1.3.201.v20161025-1711.jar -noSplash "$@"' \
+                > /usr/local/bin/sw4stm32-headless && \
+        chmod +x /usr/local/bin/sw4stm32-headless
+
+## update sw4stm32 plugins ####################################
+# not needed
+#RUN set -xueo pipefail && \
+#	echo '===> Preparing sw4stm32' && \
+#	e='sw4stm32-headless -noSplash -clean -purgeHistory -application org.eclipse.equinox.p2.director -repository http://www.ac6-tools.com/Eclipse-updates/org.openstm32.system-workbench.update-site-v2/' && \
+#	echo '===> Getting list of features to install to sw4stm32'
+#	list=$($e -list | grep "^fr.ac6" | sed 's/=.*//' | grep -v 'macos64$' | grep -v 'win32$' | sort -u) && \
+#	echo '===> Features list:' && \
+#	echo "$list" && \
+#	echo '===> Updating features in eclipse works by uninstall->install' && \
+#	l=$(echo "$list" | tr '\n' ',' | sed 's/,$//') && \
+#	echo '===> ^ Uninstalling features' && \
+#	$e -uninstallIUs "$l" $$ \
+#	echo '===> ^ Installing features' && \
+#	$e -installIUs "$l" && \
+#	echo '===> Installed all needed features for sw4stm32'
+
+## unpack sw4stm32 plugins ###################################
+RUN set -xueo pipefail && \
+	echo '===> Unpacking fr.ec6 plugin cause eclipse is too stupid to do this on its own' && \
+	cd /opt/sw4stm32/plugins/fr.ac6.mcu.externaltools.arm-none.linux64_*/tools/compiler && \
+	if [ "$(ls -A .)" ]; then \
+		tar xjvf ../st-gnu-arm-gcc-*.tar.bz2 && \
+		mv st-gnu-arm-gcc-*/* . && \
+		rmdir st-gnu-arm-gcc-* \
+	fi && \
+	echo '===> Unpacking arm-none-eabi-* done'
+		
+
